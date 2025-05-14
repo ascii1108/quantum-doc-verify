@@ -1,0 +1,75 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+build/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Go workspace file
+go.work
+
+# Dependency directories (remove these if you want to include dependencies in your repository)
+vendor/
+
+# Node dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Generated keys and signatures
+*.key
+*.sig
+dilithium_private.key
+dilithium_public.key
+private_key.bin
+public_key.bin
+signature.bin
+
+# Generated files
+test_doc.txt
+test_document.txt
+integrity_test.txt
+document_registry.json
+
+# Temporary files
+.tmp/
+*.tmp
+
+# Demo results
+demo_results/
+
+# Deployment
+.vercel/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.ropeproject/
+
+# Mac OS specific files
+.DS_Store
+
+# Generated ZKP files
+zk-keys/
+zk-proofs/
+zkp_keys/
+zkp_proofs/
+
+# Uploaded files
+uploads/
+
+# Logs
+*.log
+
+# Embedded git repository
+web/web/

@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "web/web/package.json", "use": "@vercel/static-build" }
+  ],
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/(.*)", "dest": "/web/web/build/index.html" }
+  ],
+  "outputDirectory": "web/web/build"
+}

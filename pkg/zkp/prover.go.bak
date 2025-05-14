@@ -1,0 +1,158 @@
+package zkp
+
+import (
+    "bytes"
+    "fmt"
+    "os"
+    
+    "github.com/consensys/gnark/backend/groth16"
+    "github.com/consensys/gnark/frontend"
+)
+
+// DocumentProver handles ZK proofs for document verification
+type DocumentProver struct {
+    r1cs         frontend.CompiledConstraintSystem
+    provingKey   groth16.ProvingKey
+    verifyingKey groth16.VerifyingKey
+    initialized  bool
+}
+
+// NewDocumentProver creates a new ZK prover for documents
+func NewDocumentProver() (*DocumentProver, error) {
+    // Create a new circuit
+    circuit := &DocumentCircuit{}
+
+    // Compile the circuit using the gnark API (v0.7.0)
+    r1cs := frontend.NewCS()
+    err := frontend.Compile(r1cs, circuit)
+    if err != nil {
+        return nil, fmt.Errorf("failed to compile circuit: %w", err)
+    }
+    
+    // Generate the proving and verifying keys
+    pk, vk, err := groth16.Setup(r1cs)
+    if err != nil {
+        return nil, fmt.Errorf("failed to set up proving system: %w", err)
+    }
+    
+    return &DocumentProver{
+        r1cs:         r1cs,
+        provingKey:   pk,
+        verifyingKey: vk,
+        initialized:  true,
+    }, nil
+}
+
+// GenerateProof creates a ZK proof for document ownership
+func (dp *DocumentProver) GenerateProof(
+    document []byte,
+    privateKey []byte,
+    documentHash []byte,
+    publicKey []byte,
+    signature []byte,
+) ([]byte, error) {
+    if !dp.initialized {
+        return nil, fmt.Errorf("prover not initialized")
+    }
+    
+    // Create a witness (inputs to the circuit)
+    witness := &DocumentCircuit{
+        Document:     document,
+        PrivateKey:   privateKey,
+        DocumentHash: documentHash,
+        PublicKey:    publicKey,
+        Signature:    signature,
+    }
+    
+    // Generate the proof
+    proof, err := groth16.Prove(dp.r1cs, dp.provingKey, witness)
+    if err != nil {
+        return nil, fmt.Errorf("failed to generate proof: %w", err)
+    }
+    
+    // Serialize the proof
+    var buf bytes.Buffer
+    _, err = proof.WriteTo(&buf)
+    if err != nil {
+        return nil, fmt.Errorf("failed to serialize proof: %w", err)
+    }
+    
+    return buf.Bytes(), nil
+}
+
+// VerifyProof verifies a ZK proof
+func (dp *DocumentProver) VerifyProof(
+    proof []byte,
+    documentHash []byte,
+    publicKey []byte,
+    signature []byte,
+) (bool, error) {
+    if !dp.initialized {
+        return false, fmt.Errorf("prover not initialized")
+    }
+    
+    // Deserialize the proof
+    var deserializedProof groth16.Proof
+    _, err := deserializedProof.ReadFrom(bytes.NewReader(proof))
+    if err != nil {
+        return false, fmt.Errorf("failed to deserialize proof: %w", err)
+    }
+    
+    // Create the public inputs
+    publicWitness := &DocumentCircuit{
+        // We only set the public inputs for verification
+        DocumentHash: documentHash,
+        PublicKey:    publicKey,
+        Signature:    signature,
+    }
+    
+    // Verify the proof
+    err = groth16.Verify(deserializedProof, dp.verifyingKey, publicWitness)
+    if err != nil {
+        return false, nil // Proof is invalid
+    }
+    
+    return true, nil
+}
+
+// SaveProvingKey saves the proving key to a file
+func (dp *DocumentProver) SaveProvingKey(path string) error {
+    if !dp.initialized {
+        return fmt.Errorf("prover not initialized")
+    }
+    
+    var buf bytes.Buffer
+    _, err := dp.provingKey.WriteTo(&buf)
+    if err != nil {
+        return fmt.Errorf("failed to serialize proving key: %w", err)
+    }
+    
+    // Save to file
+    err = os.WriteFile(path, buf.Bytes(), 0644)
+    if err != nil {
+        return fmt.Errorf("failed to write proving key to file: %w", err)
+    }
+    
+    return nil
+}
+
+// SaveVerifyingKey saves the verifying key to a file
+func (dp *DocumentProver) SaveVerifyingKey(path string) error {
+    if !dp.initialized {
+        return fmt.Errorf("prover not initialized")
+    }
+    
+    var buf bytes.Buffer
+    _, err := dp.verifyingKey.WriteTo(&buf)
+    if err != nil {
+        return fmt.Errorf("failed to serialize verifying key: %w", err)
+    }
+    
+    // Save to file
+    err = os.WriteFile(path, buf.Bytes(), 0644)
+    if err != nil {
+        return fmt.Errorf("failed to write verifying key to file: %w", err)
+    }
+    
+    return nil
+}
