@@ -72,4 +72,5 @@ uploads/
 *.log
 
 # Embedded git repository
-web/web/
+web/web/dilithium-test
+package-lock.json
