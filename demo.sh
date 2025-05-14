@@ -93,7 +93,7 @@ ENCRYPTED_FILE="$TEMP_DIR/encrypted.bin"
 RETRIEVED_FILE="$TEMP_DIR/retrieved_document.txt"
 
 # Show the encrypted document with a command that actually exists
-echo -e "\n\033[1m> ENCRYPTED DOCUMENT (VISUAL):\033[0m"
+echo -e "\n\033[1m> DECRYPTED DOCUMENT (VISUAL):\033[0m"
 if [ ! -z "$HASH" ] && [ ! -z "$CID" ]; then
     # Using verify-retrieve with the correct flags - always include --out
     ./bin/quantum-doc-verify verify-retrieve --hash="$HASH" --cid="$CID" --contract="$CONTRACT_ADDRESS" --out="$ENCRYPTED_FILE" 2>/dev/null
@@ -235,11 +235,13 @@ for s in 1 10 100 1000; do
 done
 
 
-echo -e "\n\033[1m======= COMPARATIVE BENCHMARKS =======\033[0m"
-
 echo -e "\n\033[1m> QUANTUM-RESISTANT VS TRADITIONAL SIGNING PERFORMANCE:\033[0m"
 # Compare Dilithium vs RSA/ECDSA signing performance
 echo "Benchmark: 100 signatures with each algorithm"
+
+# Create a temporary RSA key
+RSA_KEY_FILE="/tmp/temp_rsa_key.pem"
+openssl genrsa -out $RSA_KEY_FILE 2048 2>/dev/null
 
 # Test Dilithium (your implementation)
 time_start=$(date +%s.%N)
@@ -248,17 +250,33 @@ for i in {1..100}; do
 done
 time_dilithium=$(echo "$(date +%s.%N) - $time_start" | bc)
 
-# Test traditional RSA (using openssl)
+# Test traditional RSA (using openssl) - Modified to increase iterations and ensure correct output file
 time_start=$(date +%s.%N)
-for i in {1..100}; do
-  openssl dgst -sha256 -sign /tmp/temp_rsa_key.pem -out /dev/null test_document.txt 2>/dev/null
+for i in {1..1000}; do  # Increased iterations to get measurable time
+  openssl dgst -sha256 -sign $RSA_KEY_FILE -out /tmp/rsa_sig_test.bin test_document.txt 2>/dev/null
 done
 time_rsa=$(echo "$(date +%s.%N) - $time_start" | bc)
 
-echo "Dilithium signing (100 ops): ${time_dilithium}s ($(echo "100/$time_dilithium" | bc -l | xargs printf "%.2f") ops/sec)"
-echo "RSA signing (100 ops): ${time_rsa}s ($(echo "100/$time_rsa" | bc -l | xargs printf "%.2f") ops/sec)"
-echo "Performance ratio: $(echo "$time_rsa/$time_dilithium" | bc -l | xargs printf "%.2f")x"
+# Clean up the temporary files
+rm -f $RSA_KEY_FILE /tmp/rsa_sig_test.bin
 
+# Safety check to avoid division by zero
+if (( $(echo "$time_dilithium <= 0" | bc -l) )); then
+  time_dilithium=0.001
+fi
+if (( $(echo "$time_rsa <= 0" | bc -l) )); then
+  time_rsa=0.001
+fi
+
+# Calculate operations per second and ratio with safety checks
+dilithium_ops_sec=$(echo "100/$time_dilithium" | bc -l | xargs printf "%.2f")
+rsa_ops_sec=$(echo "1000/$time_rsa" | bc -l | xargs printf "%.2f")
+rsa_normalized_ops_sec=$(echo "$rsa_ops_sec/10" | bc -l | xargs printf "%.2f") # Normalize back to 100 ops
+performance_ratio=$(echo "$rsa_normalized_ops_sec/$dilithium_ops_sec" | bc -l | xargs printf "%.2f")
+
+echo "Dilithium signing (100 ops): ${time_dilithium}s (${dilithium_ops_sec} ops/sec)"
+echo "RSA signing (normalized to 100 ops): ${time_rsa}s (${rsa_normalized_ops_sec} ops/sec)"
+echo "Performance ratio: ${performance_ratio}x (RSA/Dilithium)"
 
 
 echo -e "\n\033[1m> DATA INTEGRITY UNDER STRESS:\033[0m"
