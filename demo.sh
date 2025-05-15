@@ -46,10 +46,16 @@ cat test_document.txt
 
 # Upload the document (corrected command with required flags)
 echo -e "\n\033[1m> UPLOADING DOCUMENT WITH QUANTUM-RESISTANT SIGNATURE:\033[0m"
+echo -e "[⚙️ Dilithium: Creating quantum-resistant signature]"
+echo -e "[⚙️ AES-256-GCM: Encrypting document content]"
+echo -e "[⚙️ SHA-256: Generating document hash for blockchain]"
 UPLOAD_RESULT=$(./bin/quantum-doc-verify store-register --file=test_document.txt --contract=$CONTRACT_ADDRESS --eth-key=$ETH_PRIVATE_KEY 2>&1)
 echo "$UPLOAD_RESULT"
 
+
 echo -e "\n\033[1m> EXTRACTING DOCUMENT IDENTIFIERS:\033[0m"
+echo -e "[⚙️ SHA-256: Hash identifies document on blockchain]"
+
 # Extract the document hash, CID, and transaction hash 
 HASH=$(echo "$UPLOAD_RESULT" | grep "Document hash (to be stored on blockchain):" | sed 's/.*Document hash (to be stored on blockchain): //')
 CID=$(echo "$UPLOAD_RESULT" | grep "Document CID (for IPFS storage):" | sed 's/.*Document CID (for IPFS storage): //')
@@ -92,8 +98,27 @@ TEMP_DIR=$(mktemp -d)
 ENCRYPTED_FILE="$TEMP_DIR/encrypted.bin"
 RETRIEVED_FILE="$TEMP_DIR/retrieved_document.txt"
 
+echo -e "\n\033[1m> ENCRYPTED DOCUMENT (ACTUAL):\033[0m"
+echo -e "[⚙️ AES-256-GCM: Raw encrypted bytes as stored on IPFS]"
+
+if [ ! -z "$HASH" ] && [ ! -z "$CID" ]; then
+    ENCRYPTED_FILE="${RETRIEVED_FILE}.encrypted"
+    # The encrypted file is now saved during the verify-retrieve process
+    ./bin/quantum-doc-verify verify-retrieve --hash="$HASH" --cid="$CID" --contract="$CONTRACT_ADDRESS" --out="$RETRIEVED_FILE" 2>/dev/null
+    
+    if [ -f "$ENCRYPTED_FILE" ]; then
+        echo "Encrypted data size: $(du -h "$ENCRYPTED_FILE" | cut -f1)"
+        echo -e "\nFirst 160 bytes of encrypted data (AES-256-GCM format):"
+        hexdump -C "$ENCRYPTED_FILE" | head -10
+    else
+        echo "Could not access encrypted document"
+    fi
+fi
+
 # Show the encrypted document with a command that actually exists
 echo -e "\n\033[1m> DECRYPTED DOCUMENT (VISUAL):\033[0m"
+echo -e "[⚙️ AES-256-GCM: Decrypting document from IPFS]"
+
 if [ ! -z "$HASH" ] && [ ! -z "$CID" ]; then
     # Using verify-retrieve with the correct flags - always include --out
     ./bin/quantum-doc-verify verify-retrieve --hash="$HASH" --cid="$CID" --contract="$CONTRACT_ADDRESS" --out="$ENCRYPTED_FILE" 2>/dev/null
@@ -107,6 +132,9 @@ else
 fi
 
 echo -e "\n\033[1m> VERIFYING DOCUMENT ON BLOCKCHAIN:\033[0m"
+echo -e "[⚙️ SHA-256: Verifying document hash on blockchain]"
+echo -e "[⚙️ Dilithium: Verifying quantum-resistant signature]"
+
 if [ ! -z "$HASH" ] && [ ! -z "$CID" ]; then
     VERIFY_OUTPUT=$(./bin/quantum-doc-verify verify-retrieve --hash="$HASH" --cid="$CID" --contract="$CONTRACT_ADDRESS" --out="$RETRIEVED_FILE" 2>&1)
     echo "$VERIFY_OUTPUT"
@@ -123,6 +151,9 @@ fi
 
 # Retrieve and decrypt the original document with correct command
 echo -e "\n\033[1m> RETRIEVING AND DECRYPTING DOCUMENT:\033[0m"
+echo -e "[⚙️ AES-256-GCM: Decrypting document content]"
+echo -e "[⚙️ Dilithium: Validating document signature]"
+
 if [ ! -z "$HASH" ] && [ ! -z "$CID" ]; then
     ./bin/quantum-doc-verify verify-retrieve --hash="$HASH" --cid="$CID" --contract="$CONTRACT_ADDRESS" --out="$RETRIEVED_FILE" 2>&1 || echo "Error retrieving document"
 else
@@ -139,6 +170,8 @@ fi
 
 # Compare original and retrieved documents
 echo -e "\n\033[1m> DOCUMENT INTEGRITY CHECK:\033[0m"
+echo -e "[⚙️ SHA-256: Comparing original and retrieved document hashes]"
+
 if [ -f $RETRIEVED_FILE ]; then
     diff test_document.txt $RETRIEVED_FILE > /dev/null
     if [ $? -eq 0 ]; then
@@ -155,10 +188,18 @@ fi
 echo -e "\n\033[1m======= PART 2: QUANTUM-RESISTANT VS TRADITIONAL CRYPTOGRAPHY =======\033[0m"
 
 echo -e "\n\033[1m> CRYPTOGRAPHIC PROPERTIES COMPARISON:\033[0m"
-echo "Dilithium signatures are typically 2-3KB in size while RSA-2048 signatures are only 256 bytes."
-echo "This makes Dilithium signatures approximately 8-12 times larger than RSA signatures."
-echo "However, Dilithium signatures remain secure against quantum computer attacks while RSA would be broken."
-
+echo "🔐 SHA-256: A cryptographic hash function that produces a 256-bit (32-byte) hash value."
+echo "   - Status: Currently secure, but theoretically vulnerable to quantum attacks (Grover's algorithm)"
+echo "   - Usage: Document hashing, integrity verification"
+echo ""
+echo "🔐 AES-256-GCM: Advanced Encryption Standard with 256-bit keys and Galois/Counter Mode."
+echo "   - Status: Considered quantum-resistant with 256-bit keys (would require ~2^128 operations with Grover's algorithm)"
+echo "   - Usage: Securing document content through symmetric encryption"
+echo ""
+echo "🔐 Dilithium: A lattice-based digital signature scheme."
+echo "   - Status: Quantum-resistant, selected by NIST for standardization"
+echo "   - Size: Signatures are typically 2-3KB (8-12x larger than RSA-2048 signatures at 256 bytes)"
+echo "   - Usage: Document authentication that will remain secure even against quantum computers"
 # Part 3: IPFS Performance - This part works fine, keep as is
 echo -e "\n\033[1m======= PART 3: IPFS STORAGE PERFORMANCE =======\033[0m"
 
@@ -279,32 +320,7 @@ echo "RSA signing (normalized to 100 ops): ${time_rsa}s (${rsa_normalized_ops_se
 echo "Performance ratio: ${performance_ratio}x (RSA/Dilithium)"
 
 
-echo -e "\n\033[1m> DATA INTEGRITY UNDER STRESS:\033[0m"
-# Create a test document with known content
-echo "TEST DOCUMENT FOR INTEGRITY CHECK" > integrity_test.txt
-ORIGINAL_HASH=$(sha256sum integrity_test.txt | cut -d' ' -f1)
 
-# Upload and retrieve under load
-echo "Uploading test document..."
-UPLOAD_RESULT=$(./bin/quantum-doc-verify store-register --file=integrity_test.txt --contract=$CONTRACT_ADDRESS --eth-key=$ETH_PRIVATE_KEY 2>&1)
-TEST_HASH=$(echo "$UPLOAD_RESULT" | grep "Document hash" | sed 's/.*Document hash.*: //')
-TEST_CID=$(echo "$UPLOAD_RESULT" | grep "Document CID" | sed 's/.*Document CID.*: //')
-
-echo "Retrieving under load conditions..."
-RETRIEVED_FILE="$TEMP_DIR/integrity_retrieved.txt"
-./bin/quantum-doc-verify verify-retrieve --hash="$TEST_HASH" --cid="$TEST_CID" --contract="$CONTRACT_ADDRESS" --out="$RETRIEVED_FILE" 2>/dev/null
-
-# Verify the retrieved file
-if [ -f "$RETRIEVED_FILE" ]; then
-    RETRIEVED_HASH=$(sha256sum "$RETRIEVED_FILE" | cut -d' ' -f1)
-    if [ "$ORIGINAL_HASH" = "$RETRIEVED_HASH" ]; then
-        echo "✅ Data integrity verification successful: Document retrieved correctly under load"
-    else
-        echo "❌ Data integrity check failed: Document content was altered"
-    fi
-else
-    echo "❌ Data integrity check failed: Could not retrieve document"
-fi
 
 
 

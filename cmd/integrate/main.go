@@ -122,19 +122,40 @@ func storeAndRegisterDocument(filePath, contractAddress, ethPrivateKeyHex, dilit
     }
     
     // 3. Store on IPFS
-    ipfs, err := storage.NewIPFSClient(ipfsGateway)
-    if err != nil {
-        log.Fatal().Err(err).Msg("Failed to create IPFS client")
-    }
+    //3. Encrypt and store on IPFS
+ipfs, err := storage.NewIPFSClient(ipfsGateway)
+if err != nil {
+    log.Fatal().Err(err).Msg("Failed to create IPFS client")
+}
 
-    cid, err := ipfs.Store(content)
-    if err != nil {
-        log.Fatal().Err(err).Msg("Failed to store document on IPFS")
-    }
-    
-    log.Info().
-        Str("cid", cid).
-        Msg("Document stored on IPFS")
+// Generate encryption key from the Dilithium private key
+// This ensures only the document owner can decrypt it
+encryptionKey := crypto.DeriveEncryptionKey(dilithiumPrivKey)
+
+// Encrypt the document before storage
+log.Info().Msg("Encrypting document with AES-256-GCM...")
+encryptedContent, err := storage.EncryptDocument(content, dilithiumPrivKey)
+if err != nil {
+    log.Fatal().Err(err).Msg("Failed to encrypt document")
+}
+
+// Store the encrypted content on IPFS
+cid, err := ipfs.Store(encryptedContent)
+if err != nil {
+    log.Fatal().Err(err).Msg("Failed to store encrypted document on IPFS")
+}
+
+// Save encryption key metadata for future retrieval
+// In a production system, this would be securely stored and shared
+keyFile := filepath.Join(filepath.Dir(filePath), filepath.Base(filePath)+".key")
+err = os.WriteFile(keyFile, encryptionKey, 0600) // Restricted permissions
+if err != nil {
+    log.Fatal().Err(err).Msg("Failed to save encryption key metadata")
+}
+
+log.Info().
+    Str("cid", cid).
+    Msg("Encrypted document stored on IPFS")
     
     // 4. Calculate document hash
     hash := storage.CalculateDocumentHash(content)
@@ -292,14 +313,39 @@ func verifyAndRetrieveDocument(cid, outputPath, contractAddress, documentHash, d
     // Proceed with normal IPFS retrieval for real CIDs
     // 5. Retrieve document from IPFS
     ipfs, err := storage.NewIPFSClient(ipfsGateway)
+if err != nil {
+    log.Fatal().Err(err).Msg("Failed to create IPFS client")
+}
+
+encryptedContent, err := ipfs.Retrieve(cid)
+if err != nil {
+    log.Fatal().Err(err).Msg("Failed to retrieve encrypted document from IPFS")
+}
+
+// Save the encrypted content for demonstration purposes
+encryptedFilePath := outputPath + ".encrypted"
+err = os.WriteFile(encryptedFilePath, encryptedContent, 0644)
+if err != nil {
+    log.Fatal().Err(err).Msg("Failed to save encrypted document")
+}
+log.Info().Str("path", encryptedFilePath).Msg("Saved encrypted document for reference")
+
+// Get the decryption key - in a real system, this would involve access control
+// Here we're using the dilithium public key as a simple demonstration
+var decryptionKey []byte
+if dilithiumPubKeyPath != "" {
+    decryptionKey, err = os.ReadFile(dilithiumPubKeyPath)
     if err != nil {
-        log.Fatal().Err(err).Msg("Failed to create IPFS client")
+        log.Fatal().Err(err).Msg("Failed to read decryption key")
     }
-    
-    content, err := ipfs.Retrieve(cid)
-    if err != nil {
-        log.Fatal().Err(err).Msg("Failed to retrieve document from IPFS")
-    }
+}
+
+// Decrypt the document
+log.Info().Msg("Decrypting document with AES-256-GCM...")
+content, err := storage.DecryptDocument(encryptedContent, decryptionKey)
+if err != nil {
+    log.Fatal().Err(err).Msg("Failed to decrypt document - unauthorized access or corrupted data")
+}
     
     // 6. Calculate document hash and verify
     calculatedHash := storage.CalculateDocumentHash(content)
